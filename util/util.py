@@ -27,6 +27,44 @@ def tensor2im(input_image, imtype=np.uint8):
     return image_numpy.astype(imtype)
 
 
+def tensor3d2im(input_volume, imtype=np.uint8):
+    """"Converts a 3D Tensor array into a numpy image array. It returns
+    the 3 central slices of the volume.
+
+    Parameters:
+        input_image (tensor) --  the input image tensor array
+        imtype (type)        --  the desired type of the converted numpy array
+    """
+    if not isinstance(input_volume, np.ndarray):
+        if isinstance(input_volume, torch.Tensor):  # get the data from a variable
+            image_tensor = input_volume.data
+        else:
+            return input_volume
+        image_numpy = image_tensor[0].cpu().float().numpy()  # convert it into a numpy array
+
+    else:  # if it is a numpy array, do nothing
+        image_numpy = input_volume
+
+    shape = image_numpy.shape
+    # Get x, y, and z slices
+    x_slice = image_numpy[shape[0] // 2, :, :]  # Middle slice along x-axis
+    y_slice = image_numpy[:, shape[1] // 2, :]  # Middle slice along y-axis
+    z_slice = image_numpy[:, :, shape[2] // 2]  # Middle slice along z-axis
+
+    # Normalize the slices to the range [0, 1]
+    x_slice_norm = (x_slice - np.min(x_slice)) / (np.max(x_slice) - np.min(x_slice))
+    y_slice_norm = (y_slice - np.min(y_slice)) / (np.max(y_slice) - np.min(y_slice))
+    z_slice_norm = (z_slice - np.min(z_slice)) / (np.max(z_slice) - np.min(z_slice))
+
+
+    # Convert the slices to RGB images
+    x_slice_rgb = np.stack((x_slice_norm, x_slice_norm, x_slice_norm), axis=-1) * 255.0
+    y_slice_rgb = np.stack((y_slice_norm, y_slice_norm, y_slice_norm), axis=-1) * 255.0
+    z_slice_rgb = np.stack((z_slice_norm, z_slice_norm, z_slice_norm), axis=-1) * 255.0
+
+    return x_slice_rgb.astype(imtype), y_slice_rgb.astype(imtype), z_slice_rgb.astype(imtype)
+
+
 def diagnose_network(net, name='network'):
     """Calculate and print the mean of average absolute(gradients)
 
@@ -62,6 +100,40 @@ def save_image(image_numpy, image_path, aspect_ratio=1.0):
     if aspect_ratio < 1.0:
         image_pil = image_pil.resize((int(h / aspect_ratio), w), Image.BICUBIC)
     image_pil.save(image_path)
+
+
+def save_volume_slices(images_numpy, image_path, aspect_ratio=1.0):
+    """Save a numpy image to the disk
+
+    Parameters:
+        image_numpy (numpy array) -- input numpy array
+        image_path (str)          -- the path of the image
+    """
+
+    image1_pil = Image.fromarray(images_numpy[0])
+    image2_pil = Image.fromarray(images_numpy[1])
+    image3_pil = Image.fromarray(images_numpy[2])
+    h, w, _ = images_numpy[0].shape
+
+    if aspect_ratio > 1.0:
+        image1_pil = image1_pil.resize((h, int(w * aspect_ratio)), Image.BICUBIC)
+        image2_pil = image2_pil.resize((h, int(w * aspect_ratio)), Image.BICUBIC)
+        image3_pil = image3_pil.resize((h, int(w * aspect_ratio)), Image.BICUBIC)
+    if aspect_ratio < 1.0:
+        image1_pil = image1_pil.resize((int(h / aspect_ratio), w), Image.BICUBIC)
+        image2_pil = image2_pil.resize((int(h / aspect_ratio), w), Image.BICUBIC)
+        image3_pil = image3_pil.resize((int(h / aspect_ratio), w), Image.BICUBIC)
+    
+    # Create a new image that's three times as wide as the input images
+    width, height = image1_pil.size
+    result_image = Image.new('RGB', (width * 3, height))
+
+    # Paste the three images side by side into the new image
+    result_image.paste(image1_pil, (0, 0))
+    result_image.paste(image2_pil, (width, 0))
+    result_image.paste(image3_pil, (width * 2, 0))
+    result_image.save(image_path)
+
 
 
 def print_numpy(x, val=True, shp=False):

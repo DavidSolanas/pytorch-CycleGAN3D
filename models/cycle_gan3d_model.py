@@ -5,7 +5,7 @@ from .base_model import BaseModel
 from . import networks3d
 
 
-class CycleGANModel3D(BaseModel):
+class CycleGAN3dModel(BaseModel):
     """
     This class implements the CycleGAN model, for learning image-to-image translation without paired data.
 

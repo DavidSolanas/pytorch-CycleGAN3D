@@ -7,7 +7,9 @@ import numpy as np
 import torch.utils.data as data
 from PIL import Image
 import torchvision.transforms as transforms
+import torch
 from abc import ABC, abstractmethod
+from skimage.transform import resize
 
 
 class BaseDataset(data.Dataset, ABC):
@@ -77,6 +79,26 @@ def get_params(opt, size):
 
     return {'crop_pos': (x, y), 'flip': flip}
 
+def get_params3d(opt, size):
+    w, h, z = size
+    new_h = h
+    new_w = w
+    new_z = z
+    if opt.preprocess == 'resize_and_crop':
+        new_h = new_w = new_z = opt.load_size
+    elif opt.preprocess == 'scale_width_and_crop':
+        new_w = opt.load_size
+        new_h = opt.load_size * h // w
+        new_z = opt.load_size
+
+    x = random.randint(0, np.maximum(0, new_w - opt.crop_size))
+    y = random.randint(0, np.maximum(0, new_h - opt.crop_size))
+    z = random.randint(0, np.maximum(0, new_z - opt.crop_size))
+
+    flip = random.random() > 0.5
+
+    return {'crop_pos': (x, y, z), 'flip': flip}
+
 
 def get_transform(opt, params=None, grayscale=False, method=transforms.InterpolationMode.BICUBIC, convert=True):
     transform_list = []
@@ -112,6 +134,42 @@ def get_transform(opt, params=None, grayscale=False, method=transforms.Interpola
     return transforms.Compose(transform_list)
 
 
+def get_transform3d(opt, params=None, grayscale=False, method=transforms.InterpolationMode.BICUBIC, convert=True):
+    transform_list = []
+
+    if grayscale:
+        transform_list.append(transforms.Grayscale(1))
+    if 'resize' in opt.preprocess:
+        transform_list.append(transforms.Lambda(lambda img: __resize3d(img)))
+    elif 'scale_width' in opt.preprocess:
+        transform_list.append(transforms.Lambda(lambda img: __scale_width(img, opt.load_size, opt.crop_size, method)))
+
+    if 'crop' in opt.preprocess:
+        if params is None:
+            transform_list.append(transforms.RandomCrop(opt.crop_size))
+        else:
+            transform_list.append(transforms.Lambda(lambda img: __crop(img, params['crop_pos'], opt.crop_size)))
+
+    if opt.preprocess == 'none':
+        transform_list.append(transforms.Lambda(lambda img: __make_power_2_3d(img, base=4, method=method)))
+
+    if not opt.no_flip:
+        if params is None:
+            transform_list.append(transforms.RandomHorizontalFlip())
+        elif params['flip']:
+            transform_list.append(transforms.Lambda(lambda img: __flip3d(img, params['flip'])))
+
+    if convert:
+        transform_list += [transforms.ToTensor()]
+        if grayscale:
+            transform_list += [transforms.Normalize((0.5,), (0.5,))]
+        else:
+            transform_list += [transforms.Lambda(lambda img: __normalize3dTensor(img))]
+
+    return transforms.Compose(transform_list)
+
+
+
 def __transforms2pil_resize(method):
     mapper = {transforms.InterpolationMode.BILINEAR: Image.BILINEAR,
               transforms.InterpolationMode.BICUBIC: Image.BICUBIC,
@@ -126,6 +184,19 @@ def __make_power_2(img, base, method=transforms.InterpolationMode.BICUBIC):
     h = int(round(oh / base) * base)
     w = int(round(ow / base) * base)
     if h == oh and w == ow:
+        return img
+
+    __print_size_warning(ow, oh, w, h)
+    return img.resize((w, h), method)
+
+
+def __make_power_2_3d(img, base, method=transforms.InterpolationMode.BICUBIC):
+    method = __transforms2pil_resize(method)
+    ow, oh, oz = img.shape
+    h = int(round(oh / base) * base)
+    w = int(round(ow / base) * base)
+    z = int(round(oz / base) * base)
+    if h == oh and w == ow and z == oz:
         return img
 
     __print_size_warning(ow, oh, w, h)
@@ -156,6 +227,23 @@ def __flip(img, flip):
         return img.transpose(Image.FLIP_LEFT_RIGHT)
     return img
 
+def __flip3d(img, flip):
+    if flip:
+        return img.transpose(1, 0, 2) # left to right
+    return img
+
+def __resize3d(img, size=(128,128,128), order=3):
+    resized = resize(img, size, anti_aliasing=False, order=order)
+    return resized
+
+def __normalize3dTensor(tensor):
+    # Crear tensores mean y std con dimensiones tensor.shape y valor 0.5
+    mean = torch.full(tensor.shape, 0.5)
+    std = torch.full(tensor.shape, 0.5)
+
+    # Normalizar el tensor utilizando los tensores mean y std en el lugar
+    tensor.sub_(mean).div_(std)
+    return tensor.float()
 
 def __print_size_warning(ow, oh, w, h):
     """Print warning information about image size(only print once)"""

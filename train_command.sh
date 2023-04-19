@@ -1,0 +1,2 @@
+#!/bin/bash
+python train.py --dataroot /Disco2021-I/david/tfm/dataset/cyclegan_dataset/ --name Train500Volumes --model cycle_gan3d --input_nc 1 --output_nc 1 --batch_size 1 --no_flip --gpu_ids 1 --max_dataset_size 500
