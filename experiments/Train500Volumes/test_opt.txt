@@ -1,0 +1,41 @@
+----------------- Options ---------------
+             aspect_ratio: 1.0                           
+               batch_size: 1                             
+          checkpoints_dir: ./checkpoints                 
+                crop_size: 128                           
+                 dataroot: /Disco2021-I/david/tfm/dataset/cyclegan_dataset/	[default: None]
+             dataset_mode: alignedOASIS3                 
+                direction: AtoB                          
+          display_winsize: 256                           
+                    epoch: latest                        
+                     eval: True                          	[default: False]
+                  gpu_ids: 1                             	[default: 0]
+                init_gain: 0.02                          
+                init_type: normal                        
+                 input_nc: 1                             	[default: 3]
+                  isTrain: False                         	[default: None]
+                load_iter: 200                           	[default: 0]
+                load_size: 128                           
+         max_dataset_size: inf                           
+                    model: cycle_gan3d                   	[default: test]
+               n_layers_D: 3                             
+                     name: Train500VolumesV2             	[default: experiment_name]
+                      ndf: 64                            
+                     netD: basic                         
+                     netG: resnet_6blocks                
+                      ngf: 32                            
+               no_dropout: True                          
+                  no_flip: False                         
+                     norm: instance                      
+                 num_test: 50                            
+              num_threads: 4                             
+                output_nc: 1                             	[default: 3]
+                    phase: test                          
+               preprocess: resize                        
+              results_dir: ./results/                    
+           serial_batches: False                         
+                   suffix:                               
+                use_wandb: False                         
+                  verbose: False                         
+       wandb_project_name: CycleGAN-and-pix2pix          
+----------------- End -------------------
