@@ -76,7 +76,7 @@ def get_params(opt, size):
     y = random.randint(0, np.maximum(0, new_h - opt.crop_size))
 
     flip = random.random() > 0.5
-
+    print(x,y,flip)
     return {'crop_pos': (x, y), 'flip': flip}
 
 def get_params3d(opt, size):
@@ -106,30 +106,36 @@ def get_transform(opt, params=None, grayscale=False, method=transforms.Interpola
         transform_list.append(transforms.Grayscale(1))
     if 'resize' in opt.preprocess:
         osize = [opt.load_size, opt.load_size]
+        print('resize',osize)
         transform_list.append(transforms.Resize(osize, method))
     elif 'scale_width' in opt.preprocess:
         transform_list.append(transforms.Lambda(lambda img: __scale_width(img, opt.load_size, opt.crop_size, method)))
 
     if 'crop' in opt.preprocess:
+        print('crop')
         if params is None:
             transform_list.append(transforms.RandomCrop(opt.crop_size))
         else:
             transform_list.append(transforms.Lambda(lambda img: __crop(img, params['crop_pos'], opt.crop_size)))
 
     if opt.preprocess == 'none':
+        print('none')
         transform_list.append(transforms.Lambda(lambda img: __make_power_2(img, base=4, method=method)))
 
     if not opt.no_flip:
+        print(params)
         if params is None:
             transform_list.append(transforms.RandomHorizontalFlip())
         elif params['flip']:
             transform_list.append(transforms.Lambda(lambda img: __flip(img, params['flip'])))
 
     if convert:
+        print('convert')
         transform_list += [transforms.ToTensor()]
         if grayscale:
             transform_list += [transforms.Normalize((0.5,), (0.5,))]
         else:
+            print('normalize')
             transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
 
@@ -160,11 +166,11 @@ def get_transform3d(opt, params=None, grayscale=False, method=transforms.Interpo
             transform_list.append(transforms.Lambda(lambda img: __flip3d(img, params['flip'])))
 
     if convert:
-        transform_list += [transforms.ToTensor()]
+        transform_list += [transforms.Lambda(lambda img: to_tensor(img))]
         if grayscale:
             transform_list += [transforms.Normalize((0.5,), (0.5,))]
         else:
-            transform_list += [transforms.Lambda(lambda img: __normalize3dTensor(img))]
+            transform_list += [transforms.Lambda(lambda img: __normalize3dTensor(img, (0.5,), (0.5,)))]
 
     return transforms.Compose(transform_list)
 
@@ -236,12 +242,52 @@ def __resize3d(img, size=(128,128,128), order=3):
     resized = resize(img, size, anti_aliasing=False, order=order)
     return resized
 
-def __normalize3dTensor(tensor):
-    # Crear tensores mean y std con dimensiones tensor.shape y valor 0.5
-    mean = torch.full(tensor.shape, 0.5)
-    std = torch.full(tensor.shape, 0.5)
 
-    # Normalizar el tensor utilizando los tensores mean y std en el lugar
+def to_tensor(pic) -> torch.Tensor:
+    """Convert a ``PIL Image`` or ``numpy.ndarray`` to tensor.
+    This function does not support torchscript.
+
+    See :class:`~torchvision.transforms.ToTensor` for more details.
+
+    Args:
+        pic (PIL Image or numpy.ndarray): Image to be converted to tensor.
+
+    Returns:
+        Tensor: Converted image.
+    """
+    default_float_dtype = torch.get_default_dtype()
+    if isinstance(pic, np.ndarray):
+        # handle numpy array
+        if pic.ndim == 2:
+            pic = pic[:, :, None]
+
+        img = torch.from_numpy(pic.transpose((2, 0, 1))).contiguous()
+        # backward compatibility
+        return img.to(dtype=default_float_dtype).div(255)
+
+
+def __normalize3dTensor(tensor: torch.Tensor, mean, std, inplace: bool = False) -> torch.Tensor:
+
+    if not tensor.is_floating_point():
+        raise TypeError(f"Input tensor should be a float tensor. Got {tensor.dtype}.")
+
+    if tensor.ndim < 3:
+        raise ValueError(
+            f"Expected tensor to be a tensor image of size (..., C, H, W). Got tensor.size() = {tensor.size()}"
+        )
+
+    if not inplace:
+        tensor = tensor.clone()
+
+    dtype = tensor.dtype
+    mean = torch.as_tensor(mean, dtype=dtype, device=tensor.device)
+    std = torch.as_tensor(std, dtype=dtype, device=tensor.device)
+    if (std == 0).any():
+        raise ValueError(f"std evaluated to zero after conversion to {dtype}, leading to division by zero.")
+    if mean.ndim == 1:
+        mean = mean.view(-1, 1, 1)
+    if std.ndim == 1:
+        std = std.view(-1, 1, 1)
     tensor.sub_(mean).div_(std)
     return tensor.float()
 

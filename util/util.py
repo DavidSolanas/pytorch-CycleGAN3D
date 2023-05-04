@@ -27,7 +27,7 @@ def tensor2im(input_image, imtype=np.uint8):
     return image_numpy.astype(imtype)
 
 
-def tensor3d2im(input_volume, imtype=np.uint8):
+def tensor3d2im(input_volume: torch.Tensor, imtype=np.uint8):
     """"Converts a 3D Tensor array into a numpy image array. It returns
     the 3 central slices of the volume.
 
@@ -37,6 +37,11 @@ def tensor3d2im(input_volume, imtype=np.uint8):
     """
     if not isinstance(input_volume, np.ndarray):
         if isinstance(input_volume, torch.Tensor):  # get the data from a variable
+            # Convert back the tensor
+            dtype = input_volume.dtype
+            mean = torch.as_tensor((0.5,), dtype=dtype, device=input_volume.device)
+            std = torch.as_tensor((0.5,), dtype=dtype, device=input_volume.device)
+            input_volume = input_volume.mul_(std).add_(mean)
             image_tensor = input_volume.data
         else:
             return input_volume
@@ -45,6 +50,12 @@ def tensor3d2im(input_volume, imtype=np.uint8):
     else:  # if it is a numpy array, do nothing
         image_numpy = input_volume
 
+    print(image_numpy.min(), image_numpy.max())
+    max_val = np.max(image_numpy)
+    min_val = np.min(image_numpy)
+    if max_val - min_val > 0:
+        image_numpy = (image_numpy - min_val) / (max_val - min_val)
+
     shape = image_numpy.shape
     # Get x, y, and z slices
     x_slice = image_numpy[shape[0] // 2, :, :]  # Middle slice along x-axis
@@ -52,17 +63,40 @@ def tensor3d2im(input_volume, imtype=np.uint8):
     z_slice = image_numpy[:, :, shape[2] // 2]  # Middle slice along z-axis
 
     # Normalize the slices to the range [0, 1]
-    x_slice_norm = (x_slice - np.min(x_slice)) / (np.max(x_slice) - np.min(x_slice))
-    y_slice_norm = (y_slice - np.min(y_slice)) / (np.max(y_slice) - np.min(y_slice))
-    z_slice_norm = (z_slice - np.min(z_slice)) / (np.max(z_slice) - np.min(z_slice))
-
 
     # Convert the slices to RGB images
-    x_slice_rgb = np.stack((x_slice_norm, x_slice_norm, x_slice_norm), axis=-1) * 255.0
-    y_slice_rgb = np.stack((y_slice_norm, y_slice_norm, y_slice_norm), axis=-1) * 255.0
-    z_slice_rgb = np.stack((z_slice_norm, z_slice_norm, z_slice_norm), axis=-1) * 255.0
+    x_slice_rgb = np.stack((x_slice, x_slice, x_slice), axis=-1) * 255.0
+    y_slice_rgb = np.stack((y_slice, y_slice, y_slice), axis=-1) * 255.0
+    z_slice_rgb = np.stack((z_slice, z_slice, z_slice), axis=-1) * 255.0
 
     return x_slice_rgb.astype(imtype), y_slice_rgb.astype(imtype), z_slice_rgb.astype(imtype)
+
+
+def tensor2imV2(input_volume, imtype=np.uint8):
+    """
+    Convierte un tensor 3D de PyTorch de dimensiones 256x256x256 en una imagen 2D de numpy.
+
+    Parámetros:
+        input_volume (tensor) -- el tensor de volumen de entrada de PyTorch de dimensiones 256x256x256
+        imtype (type)        -- el tipo de dato deseado para el array de numpy convertido
+
+    Returns:
+        Tres imágenes 2D de numpy correspondientes a las slices centrales en las tres dimensiones del volumen de entrada.
+    """
+    if not isinstance(input_volume, np.ndarray):
+        if isinstance(input_volume, torch.Tensor):  # obtener los datos de una variable
+            volume_tensor = input_volume.data
+        else:
+            return input_volume
+        volume_numpy = volume_tensor[0].cpu().float().numpy()  # convertir a un array de numpy
+        print(volume_numpy.min(), volume_numpy.max(), volume_numpy.shape)
+        volume_numpy = (np.transpose(volume_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-procesamiento: transposición y escalado
+        print(volume_numpy.min(), volume_numpy.max())
+        volume_center_slices = [volume_numpy[:,:,64], volume_numpy[:,64,:], volume_numpy[64,:,:]]  # obtener las slices centrales del volumen
+    else:  # si es un array de numpy, no hacer nada
+        volume_numpy = (np.transpose(input_volume, (1, 2, 0)) + 1) / 2.0 * 255.0
+        volume_center_slices = [input_volume[:,:,64], input_volume[:,64,:], input_volume[64,:,:]]
+    return [s.astype(imtype) for s in volume_center_slices]
 
 
 def diagnose_network(net, name='network'):
@@ -113,7 +147,7 @@ def save_volume_slices(images_numpy, image_path, aspect_ratio=1.0):
     image1_pil = Image.fromarray(images_numpy[0])
     image2_pil = Image.fromarray(images_numpy[1])
     image3_pil = Image.fromarray(images_numpy[2])
-    h, w, _ = images_numpy[0].shape
+    h, w = images_numpy[0].shape
 
     if aspect_ratio > 1.0:
         image1_pil = image1_pil.resize((h, int(w * aspect_ratio)), Image.BICUBIC)
