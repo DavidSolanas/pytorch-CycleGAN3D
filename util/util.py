@@ -4,27 +4,40 @@ import torch
 import numpy as np
 from PIL import Image
 import os
+import nibabel as nib
 
 
-def tensor2im(input_image, imtype=np.uint8):
-    """"Converts a Tensor array into a numpy image array.
-
-    Parameters:
-        input_image (tensor) --  the input image tensor array
-        imtype (type)        --  the desired type of the converted numpy array
+def tensor2im(input_volume, imtype=np.uint8):
     """
-    if not isinstance(input_image, np.ndarray):
-        if isinstance(input_image, torch.Tensor):  # get the data from a variable
-            image_tensor = input_image.data
+    Convierte un tensor 3D de PyTorch de dimensiones 256x256x256 en una imagen 2D de numpy.
+
+    Parámetros:
+        input_volume (tensor) -- el tensor de volumen de entrada de PyTorch de dimensiones 256x256x256
+        imtype (type)        -- el tipo de dato deseado para el array de numpy convertido
+
+    Returns:
+        Tres imágenes 2D de numpy correspondientes a las slices centrales en las tres dimensiones del volumen de entrada.
+    """
+    if not isinstance(input_volume, np.ndarray):
+        if isinstance(input_volume, torch.Tensor):  # obtener los datos de una variable
+            volume_tensor = input_volume.data
         else:
-            return input_image
-        image_numpy = image_tensor[0].cpu().float().numpy()  # convert it into a numpy array
-        if image_numpy.shape[0] == 1:  # grayscale to RGB
-            image_numpy = np.tile(image_numpy, (3, 1, 1))
-        image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-processing: tranpose and scaling
-    else:  # if it is a numpy array, do nothing
-        image_numpy = input_image
-    return image_numpy.astype(imtype)
+            return input_volume
+        volume_numpy = volume_tensor[0].cpu().float().numpy()  # convertir a un array de numpy
+
+        volume_numpy = (np.transpose(volume_numpy, (1, 0, 2)) + 1) / 2.0 * 255.0  # post-procesamiento: transposición y escalado
+        volume_numpy = np.flip(volume_numpy, axis=0)
+        volume_numpy = np.flip(volume_numpy, axis=2)
+        # re-normalizar para tener mismo rango todas las imágenes
+        volume_numpy = (volume_numpy - volume_numpy.min()) * (255.0 / (volume_numpy.max() - volume_numpy.min()))
+
+    else:  # si es un array de numpy, no hacer nada
+        volume_numpy = (np.transpose(input_volume, (1, 0, 2)) + 1) / 2.0 * 255.0
+        volume_numpy = np.flip(volume_numpy, axis=0)
+        volume_numpy = np.flip(volume_numpy, axis=2)
+        volume_numpy = (volume_numpy - volume_numpy.min()) * (255.0 / (volume_numpy.max() - volume_numpy.min()))
+        
+    return volume_numpy.astype(imtype)
 
 
 def tensor3d2im(input_volume: torch.Tensor, imtype=np.uint8):
@@ -89,12 +102,15 @@ def tensor2imV2(input_volume, imtype=np.uint8):
         else:
             return input_volume
         volume_numpy = volume_tensor[0].cpu().float().numpy()  # convertir a un array de numpy
-        print(volume_numpy.min(), volume_numpy.max(), volume_numpy.shape)
+
         volume_numpy = (np.transpose(volume_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-procesamiento: transposición y escalado
-        print(volume_numpy.min(), volume_numpy.max())
+        # re-normalizar para tener mismo rango todas las imágenes
+        volume_numpy = (volume_numpy - volume_numpy.min()) * (255.0 / (volume_numpy.max() - volume_numpy.min()))
+
         volume_center_slices = [volume_numpy[:,:,64], volume_numpy[:,64,:], volume_numpy[64,:,:]]  # obtener las slices centrales del volumen
     else:  # si es un array de numpy, no hacer nada
         volume_numpy = (np.transpose(input_volume, (1, 2, 0)) + 1) / 2.0 * 255.0
+        volume_numpy = (volume_numpy - volume_numpy.min()) * (255.0 / (volume_numpy.max() - volume_numpy.min()))
         volume_center_slices = [input_volume[:,:,64], input_volume[:,64,:], input_volume[64,:,:]]
     return [s.astype(imtype) for s in volume_center_slices]
 
@@ -134,6 +150,20 @@ def save_image(image_numpy, image_path, aspect_ratio=1.0):
     if aspect_ratio < 1.0:
         image_pil = image_pil.resize((int(h / aspect_ratio), w), Image.BICUBIC)
     image_pil.save(image_path)
+
+def save_volume_nifti(volume_numpy, volume_path):
+    """Save a numpy volume to the disk
+
+    Parameters:
+        volume_numpy (numpy array) -- input numpy array
+        volume_path (str)          -- the path of the image
+    """
+
+    # Create a Nifti1Image object from the numpy volume
+    nifti_img = nib.Nifti1Image(volume_numpy, affine=np.eye(4))
+    
+    # Save the Nifti image to disk
+    nib.save(nifti_img, volume_path)
 
 
 def save_volume_slices(images_numpy, image_path, aspect_ratio=1.0):

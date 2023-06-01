@@ -53,6 +53,27 @@ def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256, use_w
         wandb.log(ims_dict)
 
 
+def save_nifti_image(visuals, image_path, outpath):
+    """Save images to the disk.
+
+    Parameters:
+        visuals (OrderedDict)    -- an ordered dictionary that stores (name, images (either tensor or numpy) ) pairs
+        image_path (str)         -- the string is used to create image paths
+
+    This function will save images stored in 'visuals' to the HTML file specified by 'webpage'.
+    """
+    #short_path = ntpath.basename(image_path[0])
+    #name = os.path.splitext(short_path)[0]
+    name = os.path.basename(os.path.dirname(image_path[0]))
+    im_data = visuals['fake_B']
+
+    im = util.tensor2im(im_data)
+    image_name = '%s_fakeT1w.nii.gz' % (name)
+    save_path = os.path.join(os.path.join(outpath, name), image_name)
+    util.save_volume_nifti(im, save_path)
+
+
+
 class Visualizer():
     """This class includes several functions that can display/save images and print/save logging information.
 
