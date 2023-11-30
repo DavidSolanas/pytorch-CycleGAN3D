@@ -10,6 +10,8 @@ import torchvision.transforms as transforms
 import torch
 from abc import ABC, abstractmethod
 from skimage.transform import resize
+from scipy.interpolate import interpn
+
 
 
 class BaseDataset(data.Dataset, ABC):
@@ -156,10 +158,15 @@ def get_transform3d(opt, params=None, grayscale=False, method=transforms.Interpo
         else:
             transform_list.append(transforms.Lambda(lambda img: __crop(img, params['crop_pos'], opt.crop_size)))
 
-    if opt.preprocess == 'none':
-        transform_list.append(transforms.Lambda(lambda img: __make_power_2_3d(img, base=4, method=method)))
+    if opt.preprocess == 'tfm-david':
+        # OASIS3 preprocess tfm david
+        transform_list.append(transforms.Lambda(lambda img: __cropOASIS3(img)))
+        transform_list.append(transforms.Lambda(lambda img: __resizeOASIS3(img, shape=(opt.load_size,opt.load_size,opt.load_size))))
+        transform_list.append(transforms.Lambda(lambda img: __normalizeCycleGANOASIS3(img)))
+
 
     if not opt.no_flip:
+        print('no flip')
         if params is None:
             transform_list.append(transforms.RandomHorizontalFlip())
         elif params['flip']:
@@ -196,6 +203,52 @@ def __make_power_2(img, base, method=transforms.InterpolationMode.BICUBIC):
     return img.resize((w, h), method)
 
 
+def __cropOASIS3(img: np.ndarray) -> np.ndarray:
+    # Precomputed crop for OASIS3 processed volumes
+    min_x = 14
+    max_x = 179
+    min_y = 16
+    max_y = 221
+    min_z = 60
+    max_z = 242
+    # print(img.shape)#(1, 240, 240, 155, 4)
+    img =  img[min_x-1:max_x+1, min_y-1:max_y+1, min_z-1:max_z+1]
+    return img
+    # return img[self.buffer]
+
+def __resizeOASIS3(img: np.ndarray, shape=(128, 128, 128)) -> np.ndarray:
+    xx = np.arange(shape[1]) 
+    yy = np.arange(shape[0])
+    zz = np.arange(shape[2])
+
+    xx = xx * img.shape[1] / shape[1]
+    yy = yy * img.shape[0] / shape[0] 
+    zz = zz * img.shape[2] / shape[2]
+
+    grid = np.rollaxis(np.array(np.meshgrid(xx, yy, zz)), 0, 4)
+
+    sample = np.stack((grid[:, :, :, 1], grid[:, :, :, 0], grid[:, :, :, 2]), 3)
+    xxx = np.arange(img.shape[1])
+    yyy = np.arange(img.shape[0])
+    zzz = np.arange(img.shape[2])  
+
+    img = img[0:img.shape[0],0:img.shape[1],0:img.shape[2]]
+
+    img = interpn((yyy, xxx, zzz), img, sample, method='linear', bounds_error=False, fill_value=0)
+
+    return img
+
+def __normalizeCycleGANOASIS3(img: np.ndarray) -> np.ndarray:
+    # Normalize the values to be in the range of 0-1
+    img_norm = (img - img.min()) / (img.max() - img.min())
+
+    # Scale the values to be in the range of 0-255
+    img_scaled = img_norm * 255
+
+    # Cast the values to np.uint8 data type
+    #arr_uint8 = arr_scaled.astype(np.uint8)
+    return img_scaled
+
 def __make_power_2_3d(img, base, method=transforms.InterpolationMode.BICUBIC):
     method = __transforms2pil_resize(method)
     ow, oh, oz = img.shape
@@ -205,8 +258,8 @@ def __make_power_2_3d(img, base, method=transforms.InterpolationMode.BICUBIC):
     if h == oh and w == ow and z == oz:
         return img
 
-    __print_size_warning(ow, oh, w, h)
-    return img.resize((w, h), method)
+    print(ow, oh, oz, '->', w, h, z)
+    return img.resize((w, h, z), method)
 
 
 def __scale_width(img, target_size, crop_size, method=transforms.InterpolationMode.BICUBIC):
@@ -260,9 +313,12 @@ def to_tensor(pic) -> torch.Tensor:
         # handle numpy array
         if pic.ndim == 2:
             pic = pic[:, :, None]
+        else:
+            pic = pic[None, ...]
 
-        img = torch.from_numpy(pic.transpose((2, 0, 1))).contiguous()
+        img = torch.from_numpy(pic).contiguous()
         # backward compatibility
+
         return img.to(dtype=default_float_dtype).div(255)
 
 

@@ -101,17 +101,22 @@ def tensor2imV2(input_volume, imtype=np.uint8):
             volume_tensor = input_volume.data
         else:
             return input_volume
-        volume_numpy = volume_tensor[0].cpu().float().numpy()  # convertir a un array de numpy
+        volume_numpy = volume_tensor[0].cpu().float().numpy()[0]  # convertir a un array de numpy
 
+        print(volume_numpy.shape)
         volume_numpy = (np.transpose(volume_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-procesamiento: transposición y escalado
         # re-normalizar para tener mismo rango todas las imágenes
         volume_numpy = (volume_numpy - volume_numpy.min()) * (255.0 / (volume_numpy.max() - volume_numpy.min()))
 
-        volume_center_slices = [volume_numpy[:,:,64], volume_numpy[:,64,:], volume_numpy[64,:,:]]  # obtener las slices centrales del volumen
+        shape = volume_numpy.shape
+        volume_center_slices = [volume_numpy[:,:,shape[2]//2], volume_numpy[:,shape[1]//2,:], volume_numpy[shape[0]//2,:,:]]  # obtener las slices centrales del volumen
+    
     else:  # si es un array de numpy, no hacer nada
         volume_numpy = (np.transpose(input_volume, (1, 2, 0)) + 1) / 2.0 * 255.0
         volume_numpy = (volume_numpy - volume_numpy.min()) * (255.0 / (volume_numpy.max() - volume_numpy.min()))
-        volume_center_slices = [input_volume[:,:,64], input_volume[:,64,:], input_volume[64,:,:]]
+        shape = volume_numpy.shape
+        
+        volume_center_slices = [input_volume[:,:,shape[2]//2], input_volume[:,shape[1]//2,:], input_volume[shape[0]//2,:,:]]
     return [s.astype(imtype) for s in volume_center_slices]
 
 

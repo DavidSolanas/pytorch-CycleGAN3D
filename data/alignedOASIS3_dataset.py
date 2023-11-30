@@ -43,13 +43,10 @@ class AlignedOASIS3Dataset(BaseDataset):
         A = AB[1] # T2w
         B = AB[0] # T1w
 
-        A = self.preprocess_step(A) # T2w
-        B = self.preprocess_step(B) # T1w
-
         # apply the same transform to both A and B
-        transform_params = get_params3d(self.opt, A.shape)
-        A_transform = get_transform3d(self.opt, transform_params, grayscale=False)
-        B_transform = get_transform3d(self.opt, transform_params, grayscale=False)
+        #transform_params = get_params3d(self.opt, A.shape)
+        A_transform = get_transform3d(self.opt, grayscale=False)
+        B_transform = get_transform3d(self.opt, grayscale=False)
 
         A = A_transform(A)
         B = B_transform(B)
@@ -60,13 +57,4 @@ class AlignedOASIS3Dataset(BaseDataset):
         """Return the total number of images in the dataset."""
         return len(self.AB_paths)
 
-    def preprocess_step(self, arr):
-        # Normalize the values to be in the range of 0-1
-        arr_norm = (arr - arr.min()) / (arr.max() - arr.min())
-
-        # Scale the values to be in the range of 0-255
-        arr_scaled = arr_norm * 255
-
-        # Cast the values to np.uint8 data type
-        #arr_uint8 = arr_scaled.astype(np.uint8)
-        return arr_scaled
+    
